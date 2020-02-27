@@ -52,7 +52,7 @@ class CycleGANModel(BaseModel):
         """
         BaseModel.__init__(self, opt)
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
-        self.loss_names = ['D_A', 'G_A', 'cycle_A', 'idt_A', 'D_B', 'G_B', 'cycle_B', 'idt_B', 'G_forward_M', 'G_backward_M']
+        self.loss_names = ['D_A', 'G_A', 'cycle_A', 'idt_A', 'D_B', 'G_B', 'cycle_B', 'idt_B', 'G_forward_M', 'G_backward_M', 'backward_closeness', 'forward_closeness']
         # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
         visual_names_A = ['real_A', 'fake_B', 'rec_A', 'forward_M']
         visual_names_B = ['real_B', 'fake_A', 'rec_B', 'backward_M']
@@ -199,6 +199,8 @@ class CycleGANModel(BaseModel):
         self.loss_G_forward_M = self.criterionGAN(self.netD_M(self.forward_M), True)
         self.loss_G_backward_M = self.criterionGAN(self.netD_M(self.backward_M), False)
 
+        self.loss_forward_closeness = self.criterionIdt(self.forward_M, self.real_A)
+        self.loss_backward_closeness = self.criterionIdt(self.backward_M, self.real_B)
 
         # Forward cycle loss || G_B(G_A(A)) - A||
         self.loss_cycle_A = self.criterionCycle(self.rec_A, self.real_A) * lambda_A
@@ -206,10 +208,10 @@ class CycleGANModel(BaseModel):
         self.loss_cycle_B = self.criterionCycle(self.rec_B, self.real_B) * lambda_B
         # combined loss and calculate gradients
         self.loss_G = self.loss_G_A + self.loss_G_B\
-             + self.loss_G_forward_M\
-             + self.loss_G_backward_M\
+             + self.loss_G_forward_M + self.loss_G_backward_M\
              + self.loss_cycle_A + self.loss_cycle_B\
-             + self.loss_idt_A + self.loss_idt_B
+             + self.loss_idt_A + self.loss_idt_B\
+             + self.loss_forward_closeness + self.loss_backward_closeness
 
         self.loss_G.backward()
 
