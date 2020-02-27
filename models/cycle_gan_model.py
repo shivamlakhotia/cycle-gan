@@ -100,7 +100,7 @@ class CycleGANModel(BaseModel):
             # initialize optimizers; schedulers will be automatically created by function <BaseModel.setup>.
             # self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A.parameters(), self.netG_B.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
             # self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters(), self.netD_B.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
-            self.optimizirer_G = torch.optim.Adam(itertools.chain(self.netG_A_M.parameters(), self.netG_M_B.parameters(), \
+            self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A_M.parameters(), self.netG_M_B.parameters(), \
                 self.netG_B_M.parameters(), self.netG_M_A.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
             self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters(), self.netD_B.parameters(), self.netD_M.parameters()), \
                 lr=opt.lr, betas=(opt.beta1, 0.999))    
