@@ -3,6 +3,29 @@ import itertools
 from util.image_pool import ImagePool
 from .base_model import BaseModel
 from . import networks
+from torchvision.models import vgg
+from torch.autograd import Variable
+
+dtype = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor
+
+cnn = vgg.vgg16(pretrained=True).features
+cnn.cuda()
+cnn.type(dtype)
+
+for param in cnn.parameters():
+    param.requires_grad = False
+
+def get_content_features(x):
+  x_ = Variable(x.type(dtype))
+    
+  features = []
+  prev_feat = x_
+  for i, module in enumerate(cnn._modules.values()):
+      next_feat = module(prev_feat)
+      features.append(next_feat)
+      prev_feat = next_feat
+  return features 
+
 
 
 class CycleGANModel(BaseModel):
@@ -52,7 +75,7 @@ class CycleGANModel(BaseModel):
         """
         BaseModel.__init__(self, opt)
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
-        self.loss_names = ['D_A', 'G_A', 'cycle_A', 'idt_A', 'D_B', 'G_B', 'cycle_B', 'idt_B', 'G_forward_M', 'G_backward_M', 'backward_closeness', 'forward_closeness']
+        self.loss_names = ['D_A', 'G_A', 'cycle_A', 'idt_A', 'D_B', 'G_B', 'cycle_B', 'idt_B', 'G_forward_M', 'G_backward_M','perceptual_A','perceptual_B']
         # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
         visual_names_A = ['real_A', 'fake_B', 'rec_A', 'forward_M']
         visual_names_B = ['real_B', 'fake_A', 'rec_B', 'backward_M']
@@ -97,6 +120,7 @@ class CycleGANModel(BaseModel):
             self.criterionGAN = networks.GANLoss(opt.gan_mode).to(self.device)  # define GAN loss.
             self.criterionCycle = torch.nn.L1Loss()
             self.criterionIdt = torch.nn.L1Loss()
+            self.criterionPL = torch.nn.MSELoss()
             # initialize optimizers; schedulers will be automatically created by function <BaseModel.setup>.
             # self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A.parameters(), self.netG_B.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
             # self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters(), self.netD_B.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
@@ -128,6 +152,20 @@ class CycleGANModel(BaseModel):
         self.fake_A = self.netG_M_A(self.backward_M)
         self.rec_A = self.netG_M_A(self.forward_M)
         self.rec_B  =self.netG_M_B(self.backward_M)
+
+        
+        feature_layers = [20]
+        self.forward_M_features = []
+        self.backward_M_features = []
+        self.real_A_features = []
+        self.real_B_features = []
+
+        for layer_index in feature_layers:
+          self.backward_M_features.append(get_content_features(self.backward_M)[layer_index].clone())
+          self.forward_M_features.append(get_content_features(self.forward_M)[layer_index].clone())
+          self.real_A_features.append(get_content_features(self.real_A)[layer_index].clone())
+          self.real_B_features.append(get_content_features(self.real_B)[layer_index].clone())
+
         # self.fake_B = self.netG_A(self.real_A)  # G_A(A)
         # self.rec_A = self.netG_B(self.fake_B)   # G_B(G_A(A))
         # self.fake_A = self.netG_B(self.real_B)  # G_B(B)
@@ -145,7 +183,7 @@ class CycleGANModel(BaseModel):
         We also call loss_D.backward() to calculate the gradients.
         """
         # Real
-        pred_real = netD(real)
+        pred_real = netD(real.detach())
         loss_D_real = self.criterionGAN(pred_real, True)
         # Fake
         pred_fake = netD(fake.detach())
@@ -199,19 +237,25 @@ class CycleGANModel(BaseModel):
         self.loss_G_forward_M = self.criterionGAN(self.netD_M(self.forward_M), True)
         self.loss_G_backward_M = self.criterionGAN(self.netD_M(self.backward_M), False)
 
-        self.loss_forward_closeness = self.criterionIdt(self.forward_M, self.real_A)
-        self.loss_backward_closeness = self.criterionIdt(self.backward_M, self.real_B)
 
         # Forward cycle loss || G_B(G_A(A)) - A||
         self.loss_cycle_A = self.criterionCycle(self.rec_A, self.real_A) * lambda_A
         # Backward cycle loss || G_A(G_B(B)) - B||
         self.loss_cycle_B = self.criterionCycle(self.rec_B, self.real_B) * lambda_B
+
+        # Perceptual Loss Features
+        self.loss_perceptual_A = torch.mean( torch.stack( [self.criterionPL(self.real_A_features[i],self.forward_M_features[i]) * 0.2 for i in range(len(self.real_A_features))] ) )
+        self.loss_perceptual_B = torch.mean( torch.stack( [self.criterionPL(self.real_B_features[i],self.backward_M_features[i]) * 0.2 for i in range(len(self.real_B_features))] ) )
+        
+
+
         # combined loss and calculate gradients
         self.loss_G = self.loss_G_A + self.loss_G_B\
-             + self.loss_G_forward_M + self.loss_G_backward_M\
+             + self.loss_G_forward_M\
+             + self.loss_G_backward_M\
              + self.loss_cycle_A + self.loss_cycle_B\
              + self.loss_idt_A + self.loss_idt_B\
-             + self.loss_forward_closeness + self.loss_backward_closeness
+             + self.loss_perceptual_A + self.loss_perceptual_B
 
         self.loss_G.backward()
 
