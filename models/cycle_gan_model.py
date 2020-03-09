@@ -76,8 +76,8 @@ class CycleGANModel(BaseModel):
         BaseModel.__init__(self, opt)
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
         self.loss_names = ['D_A', 'G_A', 'cycle_A', 'idt_A', 'D_B', 'G_B', 'cycle_B', 'idt_B',\
-         'G_forward_M', 'G_backward_M','perceptual_A','perceptual_B', 'AM_closeness', 'MB_closeness',\
-         'BM_closeness', 'MA_closeness']
+         'G_forward_M', 'G_backward_M', 'AM_closeness', 'MB_closeness','BM_closeness', 'MA_closeness',\
+         'AM_BW_closeness', 'MB_BW_closeness', 'BM_BW_closeness', 'MA_BW_closeness']
         # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
         visual_names_A = ['real_A', 'fake_B', 'forward_M']
         visual_names_B = ['real_B', 'fake_A', 'backward_M']
@@ -244,26 +244,31 @@ class CycleGANModel(BaseModel):
         self.loss_BM_closeness = self.criterionIdt(self.backward_M, self.real_B)
         self.loss_MA_closeness = self.criterionIdt(self.fake_A, self.backward_M)
 
+        self.loss_AM_BW_closeness = self.criterionIdt(self.real_A[:,:,0]+self.real_A[:,:,1]+self.real_A[:,:,2], self.forward_M[:,:,0] + self.forward_M[:,:,1] + self.forward_M[:,:,2])
+        self.loss_MB_BW_closeness = self.criterionIdt(self.forward_M[:,:,0] + self.forward_M[:,:,1] + self.forward_M[:,:,2], self.fake_B[:,:,0]+self.fake_B[:,:,1]+self.fake_B[:,:,2])
+        self.loss_BM_BW_closeness = self.criterionIdt(self.real_B[:,:,0]+self.real_B[:,:,1]+self.real_B[:,:,2], self.backward_M[:,:,0] + self.backward_M[:,:,1] + self.backward_M[:,:,2])
+        self.loss_MA_BW_closeness = self.criterionIdt(self.backward_M[:,:,0] + self.backward_M[:,:,1] + self.backward_M[:,:,2], self.fake_A[:,:,0]+self.fake_A[:,:,1]+self.fake_A[:,:,2])
+
         # Forward cycle loss || G_B(G_A(A)) - A||
         self.loss_cycle_A = self.criterionCycle(self.rec_A, self.real_A) * lambda_A
         # Backward cycle loss || G_A(G_B(B)) - B||
         self.loss_cycle_B = self.criterionCycle(self.rec_B, self.real_B) * lambda_B
 
         # Perceptual Loss Features
-        self.loss_perceptual_A = torch.mean( torch.stack( [self.criterionPL(self.real_A_features[i],self.forward_M_features[i]) * 0.2 for i in range(len(self.real_A_features))] ) )
-        self.loss_perceptual_B = torch.mean( torch.stack( [self.criterionPL(self.real_B_features[i],self.backward_M_features[i]) * 0.2 for i in range(len(self.real_B_features))] ) )
+        # self.loss_perceptual_A = torch.mean( torch.stack( [self.criterionPL(self.real_A_features[i],self.forward_M_features[i]) * 0.2 for i in range(len(self.real_A_features))] ) )
+        # self.loss_perceptual_B = torch.mean( torch.stack( [self.criterionPL(self.real_B_features[i],self.backward_M_features[i]) * 0.2 for i in range(len(self.real_B_features))] ) )
         
-
-
         # combined loss and calculate gradients
         self.loss_G = self.loss_G_A + self.loss_G_B\
              + self.loss_G_forward_M\
              + self.loss_G_backward_M\
              + self.loss_cycle_A + self.loss_cycle_B\
              + self.loss_idt_A + self.loss_idt_B\
-             + self.loss_perceptual_A + self.loss_perceptual_B\
              + self.loss_AM_closeness + self.loss_MB_closeness\
-             + self.loss_BM_closeness + self.loss_MA_closeness
+             + self.loss_BM_closeness + self.loss_MA_closeness\
+             + self.loss_AM_BW_closeness + self.loss_MB_BW_closeness\
+             + self.loss_BM_BW_closeness + self.loss_MA_BW_closeness
+            #  + self.loss_perceptual_A + self.loss_perceptual_B\
 
         self.loss_G.backward()
 
